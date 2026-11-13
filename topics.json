@@ -1,0 +1,122 @@
+[
+  {
+    "name": "Токенізація: word-level, character-level та subword (BPE, WordPiece)",
+    "levels": {
+      "basic": "що таке токен і навіщо токенізація; чим відрізняються токенізація по словах і по символах; що таке словник",
+      "intermediate": "проблема OOV-слів; як працює BPE (злиття найчастіших пар); чому subword-токенізація є компромісом між словами і символами",
+      "advanced": "різниця BPE, WordPiece і Unigram LM; вплив розміру словника на довжину послідовності та якість; проблеми токенізації для морфологічно багатих мов (українська) і чисел"
+    }
+  },
+  {
+    "name": "Bag-of-Words і TF-IDF",
+    "levels": {
+      "basic": "ідея мішка слів; вектор частот; що таке TF і IDF на інтуїтивному рівні",
+      "intermediate": "формула TF-IDF і сенс IDF; розрідженість векторів; втрата порядку слів; косинусна подібність для пошуку",
+      "advanced": "варіанти нормалізації та згладжування IDF; n-грами в BoW; коли TF-IDF + лінійна модель перемагає нейромережі; зв'язок з BM25"
+    }
+  },
+  {
+    "name": "Word2Vec: Skip-gram і CBOW",
+    "levels": {
+      "basic": "що таке векторне представлення слова; дистрибутивна гіпотеза; приклад «схожі слова мають схожі вектори»",
+      "intermediate": "різниця Skip-gram і CBOW; вікно контексту; negative sampling; аналогії king - man + woman",
+      "advanced": "чому повний softmax дорогий і як negative sampling / hierarchical softmax це вирішують; зв'язок з матричною факторизацією PMI; обмеження статичних ембедінгів (полісемія) порівняно з контекстними"
+    }
+  },
+  {
+    "name": "N-грамні мовні моделі",
+    "levels": {
+      "basic": "що таке мовна модель; що таке n-грама; ймовірність наступного слова через частоти",
+      "intermediate": "Марковське припущення; проблема нульових ймовірностей; згладжування Лапласа; perplexity",
+      "advanced": "Kneser-Ney і backoff/interpolation; зв'язок perplexity з крос-ентропією; чому n-грамні моделі погано масштабуються з ростом n"
+    }
+  },
+  {
+    "name": "Рекурентні нейромережі (RNN, LSTM, GRU)",
+    "levels": {
+      "basic": "навіщо RNN для послідовностей; прихований стан як «пам'ять»; приклад задачі",
+      "intermediate": "затухання/вибух градієнтів; гейти в LSTM (forget, input, output); GRU як спрощення; двонаправлені RNN",
+      "advanced": "backpropagation through time і чому cell state у LSTM допомагає градієнтам; gradient clipping; чому трансформери витіснили RNN (паралелізм, довгі залежності)"
+    }
+  },
+  {
+    "name": "Механізм уваги (attention)",
+    "levels": {
+      "basic": "інтуїція уваги: модель «дивиться» на важливі слова; приклад з перекладом",
+      "intermediate": "query, key, value; scaled dot-product attention; softmax-ваги; self-attention vs cross-attention",
+      "advanced": "навіщо ділити на sqrt(d_k); квадратична складність за довжиною та способи її зменшити (sparse, linear attention, FlashAttention); маскування; multi-head як різні підпростори"
+    }
+  },
+  {
+    "name": "Архітектура Transformer",
+    "levels": {
+      "basic": "з яких основних частин складається трансформер (encoder, decoder); що він обробляє всі слова одночасно",
+      "intermediate": "multi-head attention; positional encoding; residual connections і layer norm; feed-forward блоки; маскування в декодері",
+      "advanced": "pre-LN vs post-LN; синусоїдальні vs навчені vs RoPE позиційні кодування; KV-cache при генерації; вплив розміру моделі та даних (scaling laws)"
+    }
+  },
+  {
+    "name": "BERT і GPT: encoder-only vs decoder-only моделі",
+    "levels": {
+      "basic": "BERT розуміє текст, GPT генерує; приклади задач для кожної",
+      "intermediate": "masked language modeling vs causal language modeling; двонаправлений vs односпрямований контекст; fine-tuning vs prompting",
+      "advanced": "чому decoder-only стали домінувати; encoder-decoder моделі (T5); next sentence prediction і чому від нього відмовились; in-context learning"
+    }
+  },
+  {
+    "name": "Fine-tuning та parameter-efficient методи (LoRA)",
+    "levels": {
+      "basic": "що таке дотренування моделі і навіщо воно; приклад",
+      "intermediate": "повний fine-tuning vs PEFT; ідея LoRA (низькорангові матриці); catastrophic forgetting; instruction tuning",
+      "advanced": "математика LoRA (W + BA, ранг r, alpha); QLoRA і квантизація; RLHF/DPO як етап після instruction tuning; ризики overfitting на малих даних"
+    }
+  },
+  {
+    "name": "Декодування в генеративних моделях",
+    "levels": {
+      "basic": "модель генерує текст по одному токену; що таке temperature на інтуїтивному рівні",
+      "intermediate": "greedy search; beam search; temperature; top-k та top-p sampling; компроміс різноманітність/якість",
+      "advanced": "чому beam search дає повтори у відкритій генерації; repetition penalty; speculative decoding; constrained decoding для структурованого виводу"
+    }
+  },
+  {
+    "name": "Retrieval-Augmented Generation (RAG)",
+    "levels": {
+      "basic": "навіщо давати моделі додаткові документи; ідея «знайти й відповісти»",
+      "intermediate": "ембедінги та векторний пошук; чанкінг документів; як знайдені фрагменти додаються в промпт; зменшення галюцинацій",
+      "advanced": "гібридний пошук (BM25 + dense) і re-ranking; вибір розміру чанків; оцінювання retrieval (recall@k) і генерації (faithfulness); RAG vs fine-tuning"
+    }
+  },
+  {
+    "name": "Метрики оцінювання в NLP",
+    "levels": {
+      "basic": "що таке accuracy; навіщо ділити дані на train/test",
+      "intermediate": "precision, recall, F1 і коли яку брати; BLEU і ROUGE для генерації; perplexity",
+      "advanced": "macro vs micro F1 при дисбалансі класів; обмеження BLEU/ROUGE; LLM-as-a-judge та його упередження; статистична значущість порівняння моделей"
+    }
+  },
+  {
+    "name": "Named Entity Recognition і sequence labeling",
+    "levels": {
+      "basic": "що таке іменовані сутності (люди, організації, місця); приклад розмітки речення",
+      "intermediate": "BIO-розмітка; модель-енкодер з класифікатором на кожен токен; оцінювання на рівні сутностей",
+      "advanced": "CRF поверх енкодера і навіщо він; вирівнювання міток із subword-токенами; вкладені сутності; перенесення на нові домени"
+    }
+  },
+  {
+    "name": "LLM-агенти та tool calling",
+    "levels": {
+      "basic": "що таке агент: модель, яка може викликати функції; приклад інструмента",
+      "intermediate": "опис інструментів через JSON-схему; цикл: модель → виклик → результат → модель; ReAct",
+      "advanced": "обробка помилок і зациклень; перевірки в коді vs у промпті; prompt injection через результати інструментів; оцінювання агентів"
+    }
+  },
+  {
+    "name": "Prompt engineering",
+    "levels": {
+      "basic": "що таке промпт; навіщо давати моделі приклади й чіткі інструкції",
+      "intermediate": "zero-shot vs few-shot; chain-of-thought; системний промпт і ролі; структурований вивід",
+      "advanced": "чутливість до формулювань і порядку прикладів; self-consistency; prompt injection і захист від неї; коли промптинг не допомагає і потрібен fine-tuning"
+    }
+  }
+]

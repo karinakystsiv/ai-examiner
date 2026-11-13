@@ -11,7 +11,7 @@ import openai
 from openai import OpenAI
 
 import tools
-from prompts import GREETING, SYSTEM_PROMPT
+from prompts import GREETING, build_system_prompt
 from tools import ExamSession
 
 PROVIDERS = {
@@ -23,7 +23,7 @@ PROVIDERS = {
     },
     "Groq (безплатно)": {
         "base_url": "https://api.groq.com/openai/v1",
-        "models": ["openai/gpt-oss-120b", "llama-3.3-70b-versatile", "qwen/qwen3.6-27b"],
+        "models": ["openai/gpt-oss-120b", "qwen/qwen3.6-27b", "openai/gpt-oss-20b"],
         "key_url": "https://console.groq.com/keys",
         "secret": "GROQ_API_KEY",
     },
@@ -182,7 +182,7 @@ def public_view(result: dict) -> dict:
 def new_session(level: str = tools.DEFAULT_LEVEL) -> ExamSession:
     session = ExamSession(level=level)
     session.llm_messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": build_system_prompt(level)},
         {"role": "assistant", "content": GREETING},
     ]
     session.log("system", GREETING)
@@ -239,6 +239,11 @@ def run_turn(session: ExamSession, user_text: str, client, model: str | list[str
     models = [model] if isinstance(model, str) else list(model)
     if session.finished:
         return [{"type": "text", "content": "Іспит уже завершено. Щоб почати новий, натисніть «Новий іспит»."}]
+
+    # До старту іспиту рівень ще можна змінити кнопками в інтерфейсі:
+    # перед кожним ходом підставляємо в системний промпт актуальний рівень.
+    if not session.started:
+        session.llm_messages[0] = {"role": "system", "content": build_system_prompt(session.level)}
 
     # знімок стану: якщо API впаде посеред ходу, відкотимося
     snapshot = (len(session.llm_messages), len(session.history))
