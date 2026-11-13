@@ -24,6 +24,36 @@ RESULTS_DIR = BASE_DIR / "results"
 
 TOPICS_PER_EXAM = (2, 3)  # мінімум і максимум тем на іспит
 
+# Рівні складності. "style" - як ставити запитання, "grading" - чого очікувати на 10/10.
+LEVELS = {
+    "basic": {
+        "title": "Початковий",
+        "emoji": "🟢",
+        "description": "Базові поняття та інтуїція, без формул.",
+        "style": "Питай про базові означення та інтуїцію, простими словами, з прикладами. "
+                 "Не вимагай формул і технічних деталей. Одне просте запитання за раз.",
+        "grading": "10/10 - студент правильно пояснює суть поняття своїми словами і наводить приклад.",
+    },
+    "intermediate": {
+        "title": "Середній",
+        "emoji": "🟡",
+        "description": "Як працюють методи: механізми, основні формули, порівняння підходів.",
+        "style": "Питай, як працюють методи: механізми, основні формули, порівняння підходів, "
+                 "типові проблеми та їх розв'язання.",
+        "grading": "10/10 - студент пояснює механізм, порівнює підходи і знає основні формули.",
+    },
+    "advanced": {
+        "title": "Складний",
+        "emoji": "🔴",
+        "description": "Глибоке розуміння: чому це працює, компроміси, сучасні методи, поглиблені запитання.",
+        "style": "Питай про глибоке розуміння: чому метод працює, математичні обґрунтування, "
+                 "компроміси, граничні випадки, сучасні варіанти й практичні проблеми. "
+                 "Став уточнення «а чому?», «а що буде, якщо...?».",
+        "grading": "10/10 - студент обґрунтовує, аналізує компроміси і впевнено відповідає на поглиблені запитання.",
+    },
+}
+DEFAULT_LEVEL = "intermediate"
+
 
 class Message(TypedDict):
     role: str       # "system" | "user" | "tool_call"
@@ -51,10 +81,11 @@ def load_topics() -> list[dict]:
         return json.load(f)
 
 
-def topic_key_points(topic_name: str) -> str:
+def topic_key_points(topic_name: str, level: str = DEFAULT_LEVEL) -> str:
+    """Орієнтири для екзаменатора: що саме питати з цієї теми на заданому рівні."""
     for t in load_topics():
         if t["name"] == topic_name:
-            return t.get("key_points", "")
+            return t.get("levels", {}).get(level, "")
     return ""
 
 
@@ -84,6 +115,7 @@ class ExamSession:
     """Стан одного іспиту (одного користувача у вебінтерфейсі)."""
     email: str | None = None
     name: str | None = None
+    level: str = DEFAULT_LEVEL   # обирається до старту, далі не змінюється
     topics: list[str] = field(default_factory=list)       # усі теми іспиту
     remaining: list[str] = field(default_factory=list)    # ще не видані
     current_topic: str | None = None
@@ -104,9 +136,11 @@ class ExamSession:
 
 # ---------------------------------------------------------------- функції із завдання
 
-def start_exam(email: str, name: str) -> list[str]:
+def start_exam(email: str, name: str, level: str = DEFAULT_LEVEL) -> list[str]:
     """Записує початок іспиту і повертає 2-3 випадкові теми.
     Якщо студента немає в базі, кидає StudentNotFoundError."""
+    if level not in LEVELS:
+        raise ValueError(f"Невідомий рівень: {level}")
     student = find_student(email, name)
     if student is None:
         raise StudentNotFoundError(
@@ -117,7 +151,7 @@ def start_exam(email: str, name: str) -> list[str]:
     topics = random.sample(all_topics, k)
     _append_jsonl(RESULTS_DIR / "exams.jsonl", {
         "event": "start", "email": student["email"], "name": student["name"],
-        "topics": topics, "datetime": now_iso(),
+        "level": level, "topics": topics, "datetime": now_iso(),
     })
     return topics
 
@@ -133,18 +167,19 @@ def get_next_topic(session: ExamSession) -> str:
     return session.current_topic
 
 
-def end_exam(email: str, score: float, history: list[Message]) -> None:
-    """Записує результат іспиту. score: 0..10, history: повна історія чату."""
+def end_exam(email: str, score: float, history: list[Message], level: str | None = None) -> None:
+    """Записує результат іспиту. score: 0..10, history: повна історія чату,
+    level: рівень складності, на якому складали іспит."""
     score = max(0.0, min(10.0, float(score)))
     finished_at = now_iso()
     RESULTS_DIR.mkdir(exist_ok=True)
     safe_email = email.replace("@", "_at_").replace("/", "_")
     protocol_path = RESULTS_DIR / f"{safe_email}_{finished_at.replace(':', '-')}.json"
     with open(protocol_path, "w", encoding="utf-8") as f:
-        json.dump({"email": email, "score": score, "finished_at": finished_at,
+        json.dump({"email": email, "score": score, "level": level, "finished_at": finished_at,
                    "history": history}, f, ensure_ascii=False, indent=2)
     _append_jsonl(RESULTS_DIR / "results.jsonl", {
-        "email": email, "score": score, "datetime": finished_at,
+        "email": email, "score": score, "level": level, "datetime": finished_at,
         "protocol": protocol_path.name,
     })
     print(f"[end_exam] {email}: {score}/10 -> {protocol_path.name}")

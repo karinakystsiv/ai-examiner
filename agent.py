@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 
+import openai
 from openai import OpenAI
 
 import tools
@@ -18,15 +19,28 @@ PROVIDERS = {
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
         "models": ["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-3.5-flash"],
         "key_url": "https://aistudio.google.com/apikey",
+        "secret": "GEMINI_API_KEY",
     },
-    "OpenAI": {
-        "base_url": None,
-        "models": ["gpt-5-mini", "gpt-4.1-mini", "gpt-4o-mini"],
-        "key_url": "https://platform.openai.com/api-keys",
+    "Groq (безплатно)": {
+        "base_url": "https://api.groq.com/openai/v1",
+        "models": ["openai/gpt-oss-120b", "llama-3.3-70b-versatile", "qwen/qwen3.6-27b"],
+        "key_url": "https://console.groq.com/keys",
+        "secret": "GROQ_API_KEY",
+    },
+    "xAI Grok": {
+        "base_url": "https://api.x.ai/v1",
+        "models": ["grok-4.7", "grok-4-1-fast-non-reasoning", "grok-3-mini"],
+        "key_url": "https://console.x.ai",
+        "secret": "XAI_API_KEY",
     },
 }
 
 MAX_STEPS_PER_TURN = 12  # захист від зациклення
+
+# Коди, за яких є сенс спробувати іншу модель того ж провайдера:
+# 5xx - сервер перевантажений, 429 - вичерпано ліміт саме цієї моделі,
+# 404 - модель перейменували або вимкнули.
+FALLBACK_STATUSES = {404, 429, 500, 502, 503, 504, 529}
 
 # ---------------------------------------------------------------- опис інструментів для LLM
 
@@ -51,8 +65,8 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "get_next_topic",
-            "description": "Повертає наступну тему для обговорення та приховані орієнтири для екзаменатора. "
-                           "Якщо тем більше немає, повертає topic = null.",
+            "description": "Повертає наступну тему, рівень складності іспиту та приховані орієнтири "
+                           "для екзаменатора саме для цього рівня. Якщо тем більше немає, повертає topic = null.",
             "parameters": {"type": "object", "properties": {}},
         },
     },
@@ -98,15 +112,19 @@ def execute_tool(session: ExamSession, name: str, args: dict) -> dict:
         if session.started:
             return {"error": "Іспит уже розпочато.", "topics": session.topics}
         try:
-            topics = tools.start_exam(args.get("email", ""), args.get("name", ""))
+            topics = tools.start_exam(args.get("email", ""), args.get("name", ""), session.level)
         except tools.StudentNotFoundError as e:
             return {"error": str(e) + " Попроси студента перевірити ім'я та email."}
         session.email = args["email"].strip().lower()
         session.name = args["name"].strip()
         session.topics = topics
         session.remaining = list(topics)
+        level = tools.LEVELS[session.level]
         return {"topics": topics, "count": len(topics),
-                "next_step": "Повідом студенту кількість тем і виклич get_next_topic()."}
+                "level": level["title"],
+                "level_instructions": level["style"] + " " + level["grading"],
+                "next_step": "Повідом студенту кількість тем і рівень складності, "
+                             "потім виклич get_next_topic()."}
 
     if name == "get_next_topic":
         if not session.started:
@@ -119,8 +137,11 @@ def execute_tool(session: ExamSession, name: str, args: dict) -> dict:
                     "message": "Тем більше немає. Порахуй середню оцінку, виклич end_exam, "
                                "а потім напиши студенту фінальний відгук."}
         number = session.topics.index(topic) + 1
+        level = tools.LEVELS[session.level]
         return {"topic": topic, "number": number, "total": len(session.topics),
-                "examiner_hints": tools.topic_key_points(topic)}
+                "level": level["title"],
+                "level_instructions": level["style"],
+                "examiner_hints": tools.topic_key_points(topic, session.level)}
 
     if name == "grade_topic":
         topic = args.get("topic", "")
@@ -152,14 +173,14 @@ def execute_tool(session: ExamSession, name: str, args: dict) -> dict:
 
 def public_view(result: dict) -> dict:
     """Результат інструмента без прихованих підказок (для показу в UI)."""
-    return {k: v for k, v in result.items() if k != "examiner_hints"}
+    return {k: v for k, v in result.items() if k not in ("examiner_hints", "level_instructions")}
 
 
 # ---------------------------------------------------------------- агент
 
 
-def new_session() -> ExamSession:
-    session = ExamSession()
+def new_session(level: str = tools.DEFAULT_LEVEL) -> ExamSession:
+    session = ExamSession(level=level)
     session.llm_messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "assistant", "content": GREETING},
@@ -170,12 +191,52 @@ def new_session() -> ExamSession:
 
 def make_client(api_key: str, provider: str) -> OpenAI:
     base_url = PROVIDERS[provider]["base_url"]
-    return OpenAI(api_key=api_key, base_url=base_url, max_retries=5, timeout=90)
+    return OpenAI(api_key=api_key, base_url=base_url, max_retries=2, timeout=90)
 
 
-def run_turn(session: ExamSession, user_text: str, client, model: str) -> list[dict]:
-    """Один хід діалогу. Повертає список подій для показу в UI:
-    {"type": "tool", "name", "args", "result"} або {"type": "text", "content"}."""
+def assistant_message_for_history(msg) -> dict:
+    """Відповідь моделі у форматі, який приймуть усі провайдери.
+    Прибираємо нестандартні поля (напр. `reasoning` у Groq), але лишаємо
+    tool_calls повністю: Gemini кладе туди thought signatures, які треба повертати."""
+    data = msg.model_dump(exclude_none=True)
+    clean = {"role": "assistant"}
+    if data.get("content"):
+        clean["content"] = data["content"]
+    if data.get("tool_calls"):
+        clean["tool_calls"] = data["tool_calls"]
+    if "content" not in clean and "tool_calls" not in clean:
+        clean["content"] = ""
+    return clean
+
+
+def create_completion(client, models: list[str], messages: list[dict], events: list[dict]):
+    """Запит до LLM з автоматичним переходом на запасну модель, якщо основна
+    перевантажена (503 тощо). Повертає (відповідь, модель, що спрацювала)."""
+    last_error = None
+    for i, m in enumerate(models):
+        try:
+            response = client.chat.completions.create(model=m, messages=messages, tools=TOOL_SCHEMAS)
+        except openai.APIStatusError as e:
+            if e.status_code not in FALLBACK_STATUSES:
+                raise
+            last_error = e
+            continue
+        except (openai.APIConnectionError, openai.APITimeoutError) as e:
+            last_error = e
+            continue
+        if i > 0:
+            events.append({"type": "notice",
+                           "content": f"Модель `{models[0]}` зараз недоступна, тому відповідає `{m}`."})
+        return response, m
+    raise last_error
+
+
+def run_turn(session: ExamSession, user_text: str, client, model: str | list[str]) -> list[dict]:
+    """Один хід діалогу. `model` - назва моделі або список: основна + запасні.
+    Повертає список подій для показу в UI:
+    {"type": "tool", "name", "args", "result"}, {"type": "text", "content"}
+    або {"type": "notice", "content"}."""
+    models = [model] if isinstance(model, str) else list(model)
     if session.finished:
         return [{"type": "text", "content": "Іспит уже завершено. Щоб почати новий, натисніть «Новий іспит»."}]
 
@@ -188,12 +249,12 @@ def run_turn(session: ExamSession, user_text: str, client, model: str) -> list[d
 
     try:
         for _ in range(MAX_STEPS_PER_TURN):
-            response = client.chat.completions.create(
-                model=model, messages=session.llm_messages, tools=TOOL_SCHEMAS,
-            )
+            response, used = create_completion(client, models, session.llm_messages, events)
+            if used != models[0]:
+                # до кінця ходу лишаємось на моделі, яка відповіла
+                models = [used] + [m for m in models if m != used]
             msg = response.choices[0].message
-            # model_dump зберігає службові поля (напр. thought signatures у Gemini)
-            session.llm_messages.append(msg.model_dump(exclude_none=True))
+            session.llm_messages.append(assistant_message_for_history(msg))
 
             if msg.content and msg.content.strip():
                 session.log("system", msg.content)
@@ -229,13 +290,15 @@ def run_turn(session: ExamSession, user_text: str, client, model: str) -> list[d
     if session.pending_end:
         if not events or events[-1]["type"] != "text":
             # модель не написала відгук: показуємо підсумок самі
-            lines = [f"**Іспит завершено. Підсумкова оцінка: {session.pending_end['score']}/10**", ""]
+            lines = [f"**Іспит завершено. Рівень: {tools.LEVELS[session.level]['title']}. "
+                     f"Підсумкова оцінка: {session.pending_end['score']}/10**", ""]
             for t, g in session.topic_grades.items():
                 lines.append(f"- {t}: {g['score']}/10 — {g['comment']}")
             summary = "\n".join(lines)
             session.log("system", summary)
             events.append({"type": "text", "content": summary})
-        tools.end_exam(session.pending_end["email"], session.pending_end["score"], session.history)
+        tools.end_exam(session.pending_end["email"], session.pending_end["score"], session.history,
+                       level=session.level)
         session.final_score = session.pending_end["score"]
         session.pending_end = None
         session.finished = True

@@ -131,7 +131,127 @@ def test_rollback_on_api_error(tmp_path):
     assert len(session.llm_messages) == n_msgs and len(session.history) == n_hist
 
 
+def test_providers_and_message_cleanup():
+    # усі три провайдери налаштовані
+    assert {"Google Gemini (безплатно)", "Groq (безплатно)", "xAI Grok"} <= set(agent.PROVIDERS)
+    for name in agent.PROVIDERS:
+        client = agent.make_client("test-key", name)
+        assert str(client.base_url).startswith(agent.PROVIDERS[name]["base_url"].rstrip("/"))
+
+    # поле reasoning (Groq gpt-oss) прибирається, а службові поля tool_calls (Gemini) лишаються
+    msg = completion(calls=[("get_next_topic", {})]).choices[0].message
+    msg.reasoning = "думки моделі"
+    msg.tool_calls[0].extra_content = {"google": {"thought_signature": "abc"}}
+    clean = agent.assistant_message_for_history(msg)
+    assert "reasoning" not in clean
+    assert clean["tool_calls"][0]["extra_content"]["google"]["thought_signature"] == "abc"
+
+
+def api_error(status):
+    import httpx
+    import openai
+    response = httpx.Response(status, request=httpx.Request("POST", "http://test"))
+    cls = openai.InternalServerError if status >= 500 else openai.BadRequestError
+    return cls(f"error {status}", response=response, body=None)
+
+
+class RoutingClient(FakeClient):
+    """Модель 'busy' завжди відповідає 503, інші - за сценарієм."""
+
+    def create(self, **kwargs):
+        if kwargs["model"] == "busy":
+            self.requests.append({"model": "busy"})
+            raise api_error(503)
+        return super().create(**kwargs)
+
+
+def test_fallback_on_503(tmp_path):
+    tools.RESULTS_DIR = tmp_path
+    session = agent.new_session()
+    client = RoutingClient([
+        completion(calls=[("start_exam", {"email": "test@example.com", "name": "Test Student"})]),
+        completion("Почнемо!"),
+    ])
+    events = agent.run_turn(session, "Test Student, test@example.com", client, ["busy", "backup"])
+    assert session.started
+    assert events[0]["type"] == "notice" and "backup" in events[0]["content"]
+    # після переходу ходу більше не стукаємо в перевантажену модель
+    assert [r["model"] for r in client.requests] == ["busy", "backup", "backup"]
+
+    # якщо всі моделі перевантажені - помилка, а стан відкочено
+    n = len(session.llm_messages)
+    try:
+        agent.run_turn(session, "відповідь", RoutingClient([]), ["busy"])
+        assert False, "мала бути помилка"
+    except Exception as e:
+        assert getattr(e, "status_code", None) == 503
+    assert len(session.llm_messages) == n
+
+    # помилки на кшталт 400 не маскуються переходом на іншу модель
+    class BadClient(FakeClient):
+        def create(self, **kwargs):
+            raise api_error(400)
+    try:
+        agent.run_turn(session, "відповідь", BadClient([]), ["a", "b"])
+        assert False
+    except Exception as e:
+        assert e.status_code == 400
+
+
+def run_exam(level, tmp_path):
+    """Проходить іспит на заданому рівні; повертає (сесію, підказки, які бачила модель)."""
+    tools.RESULTS_DIR = tmp_path
+    session = agent.new_session(level=level)
+    client = FakeClient([
+        completion(calls=[("start_exam", {"email": "test@example.com", "name": "Test Student"})]),
+        completion(calls=[("get_next_topic", {})]),
+        completion("Перше питання"),
+    ])
+    agent.run_turn(session, "Test Student, test@example.com", client, "fake")
+    start_result = last_tool_result(client.requests[1])
+    topic_result = last_tool_result(client.requests[2])
+    for _ in session.topics:
+        agent.run_turn(session, "відповідь", FakeClient([
+            completion(calls=[("grade_topic", {"topic": session.current_topic, "score": 8, "comment": "ok"}),
+                              ("get_next_topic", {})]),
+            completion("далі"),
+        ]), "fake")
+    agent.run_turn(session, "все", FakeClient([
+        completion(calls=[("end_exam", {"email": "test@example.com", "score": 8})]),
+        completion("Оцінка 8/10"),
+    ]), "fake")
+    return session, start_result, topic_result
+
+
+def test_levels(tmp_path):
+    seen_hints = {}
+    for level, info in tools.LEVELS.items():
+        session, start_result, topic_result = run_exam(level, tmp_path)
+        # рівень передається моделі одразу при старті і нагадується з кожною темою
+        assert start_result["level"] == info["title"]
+        assert info["style"] in start_result["level_instructions"]
+        assert topic_result["level"] == info["title"]
+        # підказки саме для цього рівня
+        assert topic_result["examiner_hints"] == tools.topic_key_points(topic_result["topic"], level)
+        seen_hints[level] = topic_result["examiner_hints"]
+        # рівень записано в результати
+        assert session.finished and tools.read_results()[-1]["level"] == level
+
+    # у кожної теми є непорожні орієнтири для всіх трьох рівнів, і вони різні
+    for t in tools.load_topics():
+        hints = [t["levels"][lvl] for lvl in tools.LEVELS]
+        assert all(hints) and len(set(hints)) == 3, t["name"]
+
+    # приховані поля не показуються в інтерфейсі
+    view = agent.public_view({"topic": "x", "examiner_hints": "секрет", "level_instructions": "секрет"})
+    assert "секрет" not in json.dumps(view, ensure_ascii=False)
+
+
 if __name__ == "__main__":
+    import tempfile as _t
+    test_levels(Path(_t.mkdtemp()))
+    test_fallback_on_503(Path(_t.mkdtemp()))
+    test_providers_and_message_cleanup()
     import tempfile
     test_full_exam(Path(tempfile.mkdtemp()))
     test_rollback_on_api_error(Path(tempfile.mkdtemp()))
