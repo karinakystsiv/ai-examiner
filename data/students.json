@@ -1,0 +1,11 @@
+[
+  {"name": "Іван Петренко", "email": "ivan.petrenko@example.com"},
+  {"name": "Олена Коваленко", "email": "olena.kovalenko@example.com"},
+  {"name": "Андрій Шевченко", "email": "andrii.shevchenko@example.com"},
+  {"name": "Марія Бондаренко", "email": "maria.bondarenko@example.com"},
+  {"name": "Тарас Мельник", "email": "taras.melnyk@example.com"},
+  {"name": "Софія Ткаченко", "email": "sofiia.tkachenko@example.com"},
+  {"name": "Дмитро Кравченко", "email": "dmytro.kravchenko@example.com"},
+  {"name": "Анна Олійник", "email": "anna.oliinyk@example.com"},
+  {"name": "Test Student", "email": "test@example.com"}
+]

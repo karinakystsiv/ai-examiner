@@ -1,0 +1,62 @@
+[
+  {
+    "name": "Токенізація: word-level, character-level та subword (BPE, WordPiece)",
+    "key_points": "навіщо потрібна токенізація; проблема OOV-слів; як працює BPE (злиття найчастіших пар); різниця BPE vs WordPiece; компроміс між розміром словника і довжиною послідовності"
+  },
+  {
+    "name": "Bag-of-Words і TF-IDF",
+    "key_points": "представлення документа як вектора частот; формула TF-IDF і сенс IDF; розрідженість; втрата порядку слів; застосування для класифікації та пошуку"
+  },
+  {
+    "name": "Word2Vec: Skip-gram і CBOW",
+    "key_points": "дистрибутивна гіпотеза; різниця Skip-gram vs CBOW; negative sampling; властивості векторів (аналогії king - man + woman); обмеження: одне значення на слово"
+  },
+  {
+    "name": "N-грамні мовні моделі",
+    "key_points": "Марковське припущення; оцінка ймовірностей через частоти; проблема нульових ймовірностей і згладжування (Laplace, Kneser-Ney); perplexity"
+  },
+  {
+    "name": "Рекурентні нейромережі (RNN, LSTM, GRU)",
+    "key_points": "обробка послідовностей і прихований стан; затухання/вибух градієнтів; гейти в LSTM (forget, input, output); GRU як спрощення; обмеження: послідовна обробка, довгі залежності"
+  },
+  {
+    "name": "Механізм уваги (attention)",
+    "key_points": "мотивація: bottleneck у seq2seq; query, key, value; scaled dot-product attention і навіщо ділити на sqrt(d_k); softmax-ваги; self-attention vs cross-attention"
+  },
+  {
+    "name": "Архітектура Transformer",
+    "key_points": "encoder і decoder; multi-head attention; positional encoding; residual connections і layer norm; feed-forward блоки; маскування в декодері; паралелізм порівняно з RNN"
+  },
+  {
+    "name": "BERT і GPT: encoder-only vs decoder-only моделі",
+    "key_points": "masked language modeling vs causal language modeling; двонаправлений vs односпрямований контекст; для яких задач підходить кожна; fine-tuning vs prompting"
+  },
+  {
+    "name": "Fine-tuning та parameter-efficient методи (LoRA)",
+    "key_points": "навіщо дотреновувати; повний fine-tuning vs PEFT; ідея LoRA (низькорангові матриці); catastrophic forgetting; instruction tuning"
+  },
+  {
+    "name": "Декодування в генеративних моделях",
+    "key_points": "greedy search; beam search; temperature; top-k та top-p (nucleus) sampling; компроміс між різноманітністю та якістю; повтори"
+  },
+  {
+    "name": "Retrieval-Augmented Generation (RAG)",
+    "key_points": "навіщо: актуальні знання і зменшення галюцинацій; ембедінги та векторний пошук; чанкінг документів; як знайдені фрагменти додаються в промпт; оцінювання якості"
+  },
+  {
+    "name": "Метрики оцінювання в NLP",
+    "key_points": "accuracy, precision, recall, F1 і коли яку брати; BLEU і ROUGE для генерації; perplexity; обмеження автоматичних метрик; людська оцінка та LLM-as-a-judge"
+  },
+  {
+    "name": "Named Entity Recognition і sequence labeling",
+    "key_points": "постановка задачі; BIO-розмітка; CRF або softmax поверх енкодера; оцінювання на рівні сутностей; складнощі: вкладені сутності, нові домени"
+  },
+  {
+    "name": "LLM-агенти та tool calling",
+    "key_points": "що таке агент; цикл міркування й дії (ReAct); опис інструментів через JSON-схему; як модель викликає функцію і отримує результат; ризики: prompt injection, зациклення"
+  },
+  {
+    "name": "Prompt engineering",
+    "key_points": "zero-shot vs few-shot; chain-of-thought; системний промпт і ролі; структурований вивід; чутливість до формулювань; prompt injection"
+  }
+]
